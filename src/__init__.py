@@ -1,12 +1,14 @@
 """
-Custom task generator implementation.
+Your custom task implementation.
 
-This module contains the chess generator example.
-Replace with your own task.
+Files to customize:
+    - config.py   : Task-specific configuration (TaskConfig)
+    - generator.py: Task generation logic (TaskGenerator)
+    - prompts.py  : Task prompts/instructions (get_prompt)
 """
 
-from .generator import ChessGenerator
-from .config import ChessConfig
-from .prompts import select_chess_prompt
+from .config import TaskConfig
+from .generator import TaskGenerator
+from .prompts import get_prompt
 
-__all__ = ["ChessGenerator", "ChessConfig", "select_chess_prompt"]
+__all__ = ["TaskConfig", "TaskGenerator", "get_prompt"]

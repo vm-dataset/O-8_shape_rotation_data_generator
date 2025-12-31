@@ -7,18 +7,26 @@ A minimal template for creating synthetic reasoning task generators. Fork this a
 ## 🚀 Quick Start
 
 ```bash
-# 1. Use this template on GitHub (click "Use this template")
-
-# 2. Clone your new repo
+# 1. Clone the repository
 git clone https://github.com/your-org/your-task-generator.git
 cd your-task-generator
 
-# 3. Install
+# 2. Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# 3. Install dependencies
+pip install --upgrade pip
 pip install -r requirements.txt
 pip install -e .
 
-# 4. Generate example tasks
-python examples/generate.py --num-samples 10
+# 4. Generate tasks
+python examples/generate.py --num-samples 50
+```
+
+**Always activate the virtual environment before running:**
+```bash
+source venv/bin/activate
 ```
 
 ---
@@ -31,13 +39,14 @@ template-data-generator/
 │   ├── base_generator.py   # Abstract base class
 │   ├── schemas.py          # Pydantic models
 │   ├── image_utils.py      # Image helpers
+│   ├── video_utils.py      # Video generation
 │   └── output_writer.py    # File output
 ├── src/                     # ⚠️ CUSTOMIZE: Your task logic
-│   ├── generator.py        # Replace ChessGenerator with yours
+│   ├── generator.py        # Your task generator
 │   ├── prompts.py          # Your prompt templates
 │   └── config.py           # Your configuration
 ├── examples/
-│   └── generate.py         # Example usage
+│   └── generate.py         # Entry point
 └── data/questions/         # Generated output
 ```
 
@@ -52,19 +61,19 @@ data/questions/{domain}_task/{task_id}/
 ├── first_frame.png          # Initial state (REQUIRED)
 ├── final_frame.png          # Goal state (or goal.txt)
 ├── prompt.txt               # Instructions (REQUIRED)
-└── ground_truth.avi         # Solution video (OPTIONAL)
+└── ground_truth.mp4         # Solution video (OPTIONAL)
 ```
 
 ---
 
-## 🎨 Customization (3 Steps)
+## 🎨 Customization (3 Files to Modify)
 
 ### 1. Update `src/generator.py`
 
-Replace `ChessGenerator` with your task:
+Replace the example chess generator with your task:
 
 ```python
-from core import BaseGenerator, TaskPair, TaskMetadata, ImageRenderer
+from core import BaseGenerator, TaskPair, ImageRenderer
 
 class MazeGenerator(BaseGenerator):
     def __init__(self, config):
@@ -89,13 +98,7 @@ class MazeGenerator(BaseGenerator):
             prompt=self.select_prompt(),
             first_image=first_image,
             final_image=final_image,
-            ground_truth_video=None,  # Optional: path to solution video
-            metadata=TaskMetadata(
-                id=task_id,
-                domain=self.config.domain,
-                difficulty="medium",
-                tags=["maze", "pathfinding"]
-            )
+            ground_truth_video=None  # Optional
         )
 ```
 
@@ -104,233 +107,38 @@ class MazeGenerator(BaseGenerator):
 Replace chess prompts with yours:
 
 ```python
-MAZE_PROMPTS = [
-    "Animate a path from start to goal through the maze.",
-    "Show the solution route navigating through corridors.",
-]
+PROMPTS = {
+    "default": [
+        "Animate a path from start to goal through the maze.",
+        "Show the solution route navigating through corridors.",
+    ]
+}
+
+def get_prompt(task_type: str = "default") -> str:
+    prompts = PROMPTS.get(task_type, PROMPTS["default"])
+    return random.choice(prompts)
 ```
 
-### 3. Update `src/config.py` (optional)
+### 3. Update `src/config.py`
 
-Add task-specific settings:
+**All hyperparameters go here** - both general and task-specific:
 
 ```python
-class MazeConfig(BaseModel):
-    grid_size: int = Field(default=10)
-    wall_thickness: int = Field(default=2)
-```
+from core import GenerationConfig
+from pydantic import Field
 
----
-
-## 🖼️ Using ImageRenderer
-
-```python
-from core import ImageRenderer
-
-renderer = ImageRenderer(image_size=(400, 400))
-
-# Create blank canvas
-img = renderer.create_blank_image()
-
-# Draw grid
-img = renderer.draw_grid(img, rows=10, cols=10)
-
-# Draw text
-img = renderer.draw_text(img, "Hello", (50, 50))
-
-# Ensure RGB mode
-img = ImageRenderer.ensure_rgb(img)
-```
-
----
-
-## 🎬 Video Generation (Optional)
-
-Generate `ground_truth.avi` files showing animated solutions with highlights and arrows:
-
-```python
-from core.video_utils import ChessVideoGenerator
-
-video_gen = ChessVideoGenerator(fps=10)
-video_path = video_gen.generate_move_video(
-    initial_board_image=first_image,
-    final_board_image=final_image,
-    from_square=(0, 0),  # Starting position (file, rank)
-    to_square=(0, 7),    # Ending position
-    output_path=Path("ground_truth.avi"),
-    num_frames=15
-)
-```
-
-Features: Highlighted squares, animated arrows, smooth transitions (~2.6 sec @ 10 FPS, XVID codec)
-
----
-
-## 💡 Usage Examples
-
-### Basic Generation
-
-```bash
-python examples/generate.py --num-samples 50
-```
-
-### With Seed (Reproducible)
-
-```bash
-python examples/generate.py --num-samples 100 --seed 42
-```
-
-### Python API
-
-```python
-from core import GenerationConfig, OutputWriter
-from src import ChessGenerator
-
-config = GenerationConfig(
-    num_samples=50,
-    domain="chess",
-    random_seed=42
-)
-
-generator = ChessGenerator(config)
-tasks = generator.generate_dataset()
-
-writer = OutputWriter(config.output_dir)
-writer.write_dataset(tasks)
-```
-
----
-
-## 📋 Output Specification
-
-### Required Files
-
-**first_frame.png**
-- PNG format, RGB mode
-- 400x400 pixels (or configured size)
-- Shows initial problem state
-
-**final_frame.png** (or goal.txt for text answers)
-- PNG format, RGB mode, same size as first_frame
-- Shows solution/goal state
-- Use `goal.txt` for text-based answers
-
-**prompt.txt**
-- Plain text, UTF-8
-- 50-200 words recommended
-- Instructions for video generation
-
-**ground_truth.avi** (optional)
-- AVI format, XVID codec
-- 10 FPS, ~2-4 seconds duration
-- Shows animated solution with visual indicators
-
----
-
-## 🔧 Core Components
-
-### BaseGenerator
-
-```python
-class BaseGenerator(ABC):
-    @abstractmethod
-    def generate_task_pair(self, task_id: str) -> TaskPair:
-        """Implement this method."""
-        pass
+class TaskConfig(GenerationConfig):
+    """Your task-specific configuration."""
+    # Inherits: num_samples, domain, seed, output_dir, image_size
     
-    def generate_dataset(self) -> List[TaskPair]:
-        """Generates full dataset."""
-        pass
+    # Override defaults
+    domain: str = Field(default="maze")
+    image_size: tuple[int, int] = Field(default=(512, 512))
+    
+    # Task-specific hyperparameters
+    grid_size: int = Field(default=10, description="Maze grid size")
+    wall_thickness: int = Field(default=2, description="Wall thickness")
+    difficulty: str = Field(default="medium", description="easy/medium/hard")
 ```
 
-### TaskPair
-
-```python
-TaskPair(
-    task_id="maze_0001",
-    domain="maze",
-    prompt="Navigate through the maze...",
-    first_image=PIL.Image,
-    final_image=PIL.Image,
-    metadata=TaskMetadata(...)
-)
-```
-
-### OutputWriter
-
-```python
-writer = OutputWriter("data/questions")
-writer.write_task_pair(task_pair)
-writer.write_dataset(task_pairs)
-```
-
----
-
-## 📚 Key Classes
-
-| Class | Purpose | Location |
-|-------|---------|----------|
-| `BaseGenerator` | Abstract generator | `core/base_generator.py` |
-| `GenerationConfig` | Generation settings | `core/base_generator.py` |
-| `TaskPair` | Task data structure | `core/schemas.py` |
-| `TaskMetadata` | Task metadata | `core/schemas.py` |
-| `ImageRenderer` | Image utilities | `core/image_utils.py` |
-| `OutputWriter` | File output | `core/output_writer.py` |
-
----
-
-## 🔄 Workflow
-
-1. **Implement** `generate_task_pair()` in your generator
-2. **Configure** with `GenerationConfig`
-3. **Generate** dataset with `generate_dataset()`
-4. **Write** to disk with `OutputWriter`
-5. **Use** with video reasoning frameworks (VMEvalKit, etc.)
-
----
-
-## 📝 Prompt Writing Tips
-
-Good prompts:
-- Describe the action/animation clearly
-- Mention initial and final states
-- Use action verbs (animate, show, demonstrate)
-- Be specific but concise (50-150 words)
-
-Example:
-```
-"Animate a path from the green start to the red goal. 
-The path should navigate through maze corridors without 
-crossing walls, showing the solution step by step."
-```
-
----
-
-## ⚙️ Dependencies
-
-Minimal requirements:
-- `numpy` - Array operations
-- `Pillow` - Image processing
-- `pydantic` - Data validation
-
-Add task-specific deps to `requirements.txt`.
-
----
-
-## 📄 License
-
-MIT License - fork freely!
-
----
-
-## 🔗 Related
-
-- **template-data-pipeline** - For benchmark datasets
-- **VMEvalKit** - Video reasoning evaluation
-- **Your task generator** - Share with community!
-
----
-
-## 💬 Questions?
-
-This is a template repository. Fork it and make it yours! 🚀
+**Single entry point:** `python examples/generate.py --num-samples 50`

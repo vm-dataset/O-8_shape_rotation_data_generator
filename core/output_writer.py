@@ -1,6 +1,5 @@
 """Output writer for standard format."""
 
-import json
 import shutil
 from pathlib import Path
 from typing import List
@@ -17,36 +16,28 @@ class OutputWriter:
     
     def write_task_pair(self, task_pair: TaskPair) -> Path:
         """Write single task to disk."""
-        # Create directory
         task_dir = self.output_dir / f"{task_pair.domain}_task" / task_pair.task_id
         task_dir.mkdir(parents=True, exist_ok=True)
         
         # Write images
-        first_img = ImageRenderer.ensure_rgb(task_pair.first_image)
-        first_img.save(task_dir / "first_frame.png", "PNG")
+        ImageRenderer.ensure_rgb(task_pair.first_image).save(task_dir / "first_frame.png")
         
         if task_pair.final_image:
-            final_img = ImageRenderer.ensure_rgb(task_pair.final_image)
-            final_img.save(task_dir / "final_frame.png", "PNG")
-        elif task_pair.goal_text:
-            (task_dir / "goal.txt").write_text(task_pair.goal_text)
+            ImageRenderer.ensure_rgb(task_pair.final_image).save(task_dir / "final_frame.png")
         
         # Write prompt
         (task_dir / "prompt.txt").write_text(task_pair.prompt)
         
-        # Write ground truth video if provided
-        if task_pair.ground_truth_video:
+        # Write video if provided (preserve original extension)
+        if task_pair.ground_truth_video and Path(task_pair.ground_truth_video).exists():
             video_src = Path(task_pair.ground_truth_video)
-            if video_src.exists():
-                video_dst = task_dir / "ground_truth.avi"
-                shutil.copy(video_src, video_dst)
+            video_ext = video_src.suffix  # .mp4 or .avi
+            shutil.copy(video_src, task_dir / f"ground_truth{video_ext}")
         
         return task_dir
     
     def write_dataset(self, task_pairs: List[TaskPair]) -> Path:
         """Write all tasks to disk."""
-        print(f"\n📁 Writing {len(task_pairs)} tasks to {self.output_dir}")
         for pair in task_pairs:
             self.write_task_pair(pair)
-        print(f"✅ Complete!\n")
         return self.output_dir

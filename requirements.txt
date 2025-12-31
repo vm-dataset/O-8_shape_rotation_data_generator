@@ -6,10 +6,9 @@ pydantic==2.5.0
 # Video generation
 opencv-python==4.8.1.78
 
-# Chess-specific (for the example generator)
-# Install with: pip install python-chess cairosvg
+# Chess task dependencies
 python-chess==1.999
-cairosvg==2.7.1  # For SVG to PNG conversion
+cairosvg==2.7.1
 
 # Add your task-specific dependencies here
 # Examples:
