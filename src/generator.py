@@ -81,7 +81,7 @@ class TaskGenerator(BaseGenerator):
         # Generate video (optional)
         video_path = None
         if self.config.generate_videos and self.video_generator:
-            video_path = self._generate_video(first_image, final_image, task_id)
+            video_path = self._generate_video(first_image, final_image, task_id, task_data)
         
         # Select prompt
         prompt = get_prompt(task_data.get("type", "default"))
@@ -136,22 +136,164 @@ class TaskGenerator(BaseGenerator):
         self,
         first_image: Image.Image,
         final_image: Image.Image,
-        task_id: str
+        task_id: str,
+        task_data: dict
     ) -> str:
-        """Generate ground truth video."""
+        """Generate ground truth video with piece sliding and fading."""
         temp_dir = Path(tempfile.gettempdir()) / f"{self.config.domain}_videos"
         temp_dir.mkdir(parents=True, exist_ok=True)
         video_path = temp_dir / f"{task_id}_ground_truth.mp4"
         
-        result = self.video_generator.create_crossfade_video(
-            first_image,
-            final_image,
-            video_path,
-            hold_frames=5,
-            transition_frames=15
+        # For chess, create custom animation with piece fading
+        frames = self._create_chess_animation_frames(task_data)
+        
+        result = self.video_generator.create_video_from_frames(
+            frames,
+            video_path
         )
         
         return str(result) if result else None
+    
+    def _create_chess_animation_frames(
+        self,
+        task_data: dict,
+        hold_frames: int = 5,
+        transition_frames: int = 25
+    ) -> list:
+        """
+        Create animation frames where the moving chess piece slides across the board.
+        
+        The piece slides smoothly from start to end position.
+        NO fading - the piece stays fully visible (100% opacity) the entire time.
+        """
+        if not CHESS_AVAILABLE:
+            # Fallback: simple crossfade
+            start_img = self._render_board(task_data["fen"])
+            end_img = self._render_final_state(task_data)
+            return [start_img] * hold_frames + [end_img] * hold_frames
+        
+        frames = []
+        fen = task_data["fen"]
+        move_uci = task_data["solution"]
+        
+        # Parse the move
+        board = chess.Board(fen)
+        move = chess.Move.from_uci(move_uci)
+        from_square = move.from_square
+        to_square = move.to_square
+        moving_piece = board.piece_at(from_square)
+        
+        # Hold initial position
+        for _ in range(hold_frames):
+            frames.append(self._render_board(fen))
+        
+        # Create transition frames
+        board_size = self.config.image_size[0]
+        square_size = board_size // 8
+        
+        # Calculate start and end positions in pixels
+        from_file = chess.square_file(from_square)
+        from_rank = chess.square_rank(from_square)
+        to_file = chess.square_file(to_square)
+        to_rank = chess.square_rank(to_square)
+        
+        # Pixel coordinates (center of square)
+        start_x = from_file * square_size + square_size // 2
+        start_y = (7 - from_rank) * square_size + square_size // 2
+        end_x = to_file * square_size + square_size // 2
+        end_y = (7 - to_rank) * square_size + square_size // 2
+        
+        # PRE-RENDER the piece ONCE to keep it pixel-perfect consistent
+        piece_image = self._render_single_piece(moving_piece, square_size)
+        
+        for i in range(transition_frames):
+            progress = i / (transition_frames - 1) if transition_frames > 1 else 1.0
+            
+            # Calculate piece position
+            current_x = start_x + (end_x - start_x) * progress
+            current_y = start_y + (end_y - start_y) * progress
+            
+            # Render frame with pre-rendered piece at intermediate position
+            frame = self._render_frame_with_moving_piece(
+                board, from_square, to_square, piece_image,
+                current_x, current_y, square_size
+            )
+            frames.append(frame)
+        
+        # Hold final position
+        board.push(move)
+        for _ in range(hold_frames):
+            frames.append(self._render_board(board.fen()))
+        
+        return frames
+    
+    def _render_frame_with_moving_piece(
+        self,
+        board: 'chess.Board',
+        from_square: int,
+        to_square: int,
+        piece_image: Image.Image,
+        piece_x: float,
+        piece_y: float,
+        square_size: int
+    ) -> Image.Image:
+        """Render a single frame with the pre-rendered moving piece at a specific position."""
+        # Create a modified board without the moving piece
+        board_copy = board.copy()
+        board_copy.remove_piece_at(from_square)
+        
+        # Render the board without the moving piece
+        base_image = self._render_board(board_copy.fen())
+        
+        # Composite the pre-rendered piece onto the board
+        result = base_image.convert('RGBA')
+        piece_width, piece_height = piece_image.size
+        paste_x = int(piece_x - piece_width // 2)
+        paste_y = int(piece_y - piece_height // 2)
+        result.paste(piece_image, (paste_x, paste_y), piece_image)
+        
+        return result.convert('RGB')
+    
+    def _render_single_piece(self, piece: 'chess.Piece', square_size: int) -> Image.Image:
+        """Render a single chess piece."""
+        img = Image.new("RGBA", (square_size, square_size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        
+        font = self._get_chess_font(square_size)
+        
+        unicode_map = {
+            'P': '\u2659', 'N': '\u2658', 'B': '\u2657', 
+            'R': '\u2656', 'Q': '\u2655', 'K': '\u2654',
+            'p': '\u265F', 'n': '\u265E', 'b': '\u265D', 
+            'r': '\u265C', 'q': '\u265B', 'k': '\u265A',
+        }
+        
+        sym = piece.symbol()
+        label = unicode_map.get(sym, sym.upper())
+        
+        # Get text bounds for centering
+        bbox = draw.textbbox((0, 0), label, font=font)
+        w = bbox[2] - bbox[0]
+        h = bbox[3] - bbox[1]
+        
+        x = (square_size - w) // 2
+        y = (square_size - h) // 2
+        
+        # Draw with outline for contrast
+        fill_color = (245, 245, 245) if piece.color else (20, 20, 20)
+        outline_color = (0, 0, 0) if piece.color else (255, 255, 255)
+        
+        # Draw outline
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if dx == 0 and dy == 0:
+                    continue
+                draw.text((x + dx, y + dy), label, font=font, fill=outline_color)
+        
+        # Draw piece
+        draw.text((x, y), label, font=font, fill=fill_color)
+        
+        return img
     
     # ══════════════════════════════════════════════════════════════════════════
     #  CHESS GENERATION HELPERS

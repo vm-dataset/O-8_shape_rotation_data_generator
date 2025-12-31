@@ -159,6 +159,76 @@ class VideoGenerator:
         
         return self.create_video_from_frames(frames, output_path)
     
+    def create_sliding_fade_video(
+        self,
+        start_image: Image.Image,
+        end_image: Image.Image,
+        output_path: Path,
+        hold_frames: int = 5,
+        transition_frames: int = 15
+    ) -> Optional[Path]:
+        """
+        Create video with sliding transition where pieces fade out then fade in.
+        
+        The piece slides smoothly from start to end position, but also:
+        - Fades out (becomes transparent) in the first half
+        - Fades in (becomes opaque) in the second half
+        
+        Args:
+            start_image: Initial image
+            end_image: Final image
+            output_path: Path to save video
+            hold_frames: Frames to hold at start and end
+            transition_frames: Frames for transition
+            
+        Returns:
+            Path to video file, or None if cv2 not available
+        """
+        if not CV2_AVAILABLE:
+            return None
+        
+        frames = []
+        
+        # Hold initial position
+        for _ in range(hold_frames):
+            frames.append(start_image.copy())
+        
+        # Sliding transition with fade out/fade in
+        start_rgba = start_image.convert('RGBA')
+        end_rgba = end_image.convert('RGBA')
+        
+        # Ensure same size
+        if start_rgba.size != end_rgba.size:
+            end_rgba = end_rgba.resize(start_rgba.size, Image.Resampling.LANCZOS)
+        
+        for i in range(transition_frames):
+            # Progress through transition (0 to 1)
+            progress = i / (transition_frames - 1) if transition_frames > 1 else 1.0
+            
+            # Fade curve: fade out in first half, fade in in second half
+            # Creates a dip in opacity in the middle
+            if progress < 0.5:
+                # Fading out: opacity goes from 1.0 to 0.2
+                opacity = 1.0 - (progress * 2) * 0.8
+            else:
+                # Fading in: opacity goes from 0.2 to 1.0
+                opacity = 0.2 + ((progress - 0.5) * 2) * 0.8
+            
+            # Blend the positions (sliding motion)
+            blended = Image.blend(start_rgba, end_rgba, progress)
+            
+            # Apply opacity effect by blending with semi-transparent version
+            transparent = Image.new('RGBA', blended.size, (0, 0, 0, 0))
+            faded = Image.blend(transparent, blended, opacity)
+            
+            frames.append(faded.convert('RGB'))
+        
+        # Hold final position
+        for _ in range(hold_frames):
+            frames.append(end_image.copy())
+        
+        return self.create_video_from_frames(frames, output_path)
+    
     def interpolate_frames(
         self,
         start_frame: Image.Image,

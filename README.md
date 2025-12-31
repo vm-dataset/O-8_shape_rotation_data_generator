@@ -24,11 +24,6 @@ pip install -e .
 python examples/generate.py --num-samples 50
 ```
 
-**Always activate the virtual environment before running:**
-```bash
-source venv/bin/activate
-```
-
 ---
 
 ## 📁 Structure
