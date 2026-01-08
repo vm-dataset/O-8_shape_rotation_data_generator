@@ -30,7 +30,7 @@ class TaskConfig(GenerationConfig):
     #  OVERRIDE DEFAULTS
     # ══════════════════════════════════════════════════════════════════════════
     
-    domain: str = Field(default="chess")
+    domain: str = Field(default="shape_rotation")
     image_size: tuple[int, int] = Field(default=(512, 512))
     
     # ══════════════════════════════════════════════════════════════════════════
@@ -51,4 +51,23 @@ class TaskConfig(GenerationConfig):
     #  TASK-SPECIFIC SETTINGS
     # ══════════════════════════════════════════════════════════════════════════
     
-    # Add your custom settings here
+    # Shape matching specific settings
+    shape_size: int = Field(
+        default=80,
+        description="Size of individual shapes in pixels"
+    )
+    
+    margin: int = Field(
+        default=40,
+        description="Margin around shapes"
+    )
+    
+    arrow_length: int = Field(
+        default=60,
+        description="Length of transformation arrows"
+    )
+    
+    question_mark_size: int = Field(
+        default=60,
+        description="Size of question mark"
+    )

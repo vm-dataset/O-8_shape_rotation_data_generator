@@ -11,9 +11,9 @@ if Path("requirements.txt").exists():
         requirements = [line.strip() for line in f if line.strip() and not line.startswith("#")]
 
 setup(
-    name="template-data-generator",
+    name="shape-rotation-data-generator",
     version="1.0.0",
-    description="Template for creating reasoning task generators",
+    description="Specialized generator for shape rotation transformation tasks",
     long_description=readme,
     long_description_content_type="text/markdown",
     packages=find_packages(include=["core", "core.*", "src", "src.*"]),
